@@ -22,16 +22,27 @@ import sys
 import random
 
 def convert_bool(arg_name, arg_value):
-    """验证并转换为 bool；无效值报错"""
-    lower_value = arg_value.lower()
+    """
+    Validate and convert boolean arguments.
+
+    This function supports both command-line string inputs such as 'True'/'False'
+    and direct Python boolean inputs such as True/False.
+    """
+    if isinstance(arg_value, bool):
+        return arg_value
+
+    lower_value = str(arg_value).lower()
     if lower_value == 'true':
         return True
     elif lower_value == 'false':
         return False
     else:
-        raise ValueError(f"Invalid value for --{arg_name}: '{arg_value}'. Must be 'True' or 'False' (case-insensitive).")
+        raise ValueError(
+            f"Invalid value for --{arg_name}: '{arg_value}'. "
+            f"Must be 'True' or 'False' (case-insensitive)."
+        )
 
-def prepare():
+def get_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument('--n_epochs', type=int, default=10)
     parser.add_argument('--train_batch_size', type=int, default=32)
@@ -44,8 +55,8 @@ def prepare():
     parser.add_argument('--species', type=str)
     parser.add_argument('--modal_a_file', type=str)
     parser.add_argument('--modal_b_file', type=str)
-    parser.add_argument('--modal_a_loss', type=str, required=True)
-    parser.add_argument('--modal_b_loss', type=str, required=True)
+    parser.add_argument('--modal_a_loss', type=str)
+    parser.add_argument('--modal_b_loss', type=str)
     parser.add_argument('--lr', type=float, default=0.0001)
     parser.add_argument('--folds', type=int, default=5)
     parser.add_argument('--d_model', type=int, default=256)
@@ -62,12 +73,12 @@ def prepare():
     parser.add_argument('--hvg_flavor', type=str, default='cell_ranger')
     parser.add_argument('--hvg_flavor_2', type=str, default='cell_ranger')
     parser.add_argument('--patience', type=int, default=50)
-    parser.add_argument('--evaluation_a', type=str, default='NMI')  # NMI or MAE
+    parser.add_argument('--evaluation_a', type=str, default='NMI')
     parser.add_argument('--evaluation_b', type=str, default='NMI')
     
     parser.add_argument('--include_zero_gene', type=str, default='True')
     parser.add_argument('--enable_amp', type=str, default='True')
-    parser.add_argument('--run', type=str, default='False')
+    parser.add_argument('--run', type=str, default='True')
     parser.add_argument('--save_embds', type=str, default='False')
     parser.add_argument('--ram_usage_optimization', type=str, default='False')
     parser.add_argument('--grn_la', type=str, default='True')
@@ -80,8 +91,14 @@ def prepare():
     parser.add_argument('--modal_b_loss_lambda', type=float, default=None)
     parser.add_argument('--split', type=str, default='5-fold')
 
-    args = parser.parse_args()
+    return parser
 
+
+
+def normalize_args(args):
+    """
+    Normalize argument types after parsing or direct function construction.
+    """
     args.include_zero_gene = convert_bool('include_zero_gene', args.include_zero_gene)
     args.enable_amp = convert_bool('enable_amp', args.enable_amp)
     args.run = convert_bool('run', args.run)
@@ -95,13 +112,57 @@ def prepare():
     return args
 
 
-def run():
+def build_args(**kwargs):
+    """
+    Build arguments for function-based execution only.
+    The default values are still managed by argparse.ArgumentParser.
+    """
 
-    #  用cpu跑会报错: assert qkv.dtype in [torch.float16, torch.bfloat16]
-    args = prepare()
+    parser = get_parser()
+
+    # 不读取命令行参数，只读取 parser 中定义的默认值
+    args = parser.parse_args([])
+
+    # 用 run_ReguSync(...) 中传入的函数参数覆盖默认值
+    for key, value in kwargs.items():
+        if not hasattr(args, key):
+            raise ValueError(f"Unknown argument: {key}")
+        setattr(args, key, value)
+
+    args = normalize_args(args)
+
+    required_args = [
+        'dataset',
+        'species',
+        'modal_a_file',
+        'modal_b_file',
+        'modal_a_loss',
+        'modal_b_loss',
+    ]
+
+    missing_args = [
+        name for name in required_args
+        if getattr(args, name) is None
+    ]
+
+    if missing_args:
+        raise ValueError(
+            "Missing required arguments for function-based execution: "
+            + ", ".join(missing_args)
+        )
+
+    return args
+
+
+
+
+
+def run_ReguSync(**kwargs):
+
+    args = build_args(**kwargs)
 
     if not args.run:
-        sys.exit()
+        return
 
     dataset_name = args.dataset
     save_dir = Path(f"./SAVE/dev_{dataset_name}/{time.strftime('%Y-%m-%d_%H-%M-%S')}/")
@@ -812,7 +873,3 @@ def run():
         del model
         gc.collect()
         torch.cuda.empty_cache()
-
-
-if __name__ == '__main__':
-    run()
