@@ -1,4 +1,4 @@
-from main import run_ReguSync
+from regusync_main import run_ReguSync
 
 run_ReguSync(
     n_epochs=200,
