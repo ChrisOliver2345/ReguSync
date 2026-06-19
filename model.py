@@ -13,7 +13,7 @@ from scvi.distributions import NegativeBinomial
 from torch.distributions import Poisson, Bernoulli
 import numpy as np
 
-class Gene_Transformer(nn.Module):
+class ReguSync_Transformer(nn.Module):
     def __init__(self,
                  args,
                  ntoken: int,
@@ -35,13 +35,9 @@ class Gene_Transformer(nn.Module):
         self.encoder = GeneEncoder(ntoken, d_model, padding_idx=vocab[pad_token])
         self.value_encoder = CategoryValueEncoder(n_input_bins, d_model, padding_idx=pad_value)
         self.bn = nn.BatchNorm1d(d_model, eps=6.1e-5)
-
-        if args.grn_la == True:
-            self.pos_emb = nn.Embedding(args.max_seq_len, d_model)
-            self.level_emb = nn.Embedding(args.max_la+1, d_model)
-
-        self.basic_encoder_a = BasicEncoder(in_features=n_features_a, out_features=d_model, dropout=dropout)
-        self.basic_encoder_b = BasicEncoder(in_features=n_features_b, out_features=d_model, dropout=dropout)
+        
+        self.pos_emb = nn.Embedding(args.max_seq_len, d_model)
+        self.level_emb = nn.Embedding(args.max_la+1, d_model)
 
         encoder_layers = FlashTransformerEncoderLayer(
             d_model=d_model,
@@ -72,13 +68,8 @@ class Gene_Transformer(nn.Module):
         self.decoder_a = ExprDecoder(seq_len=args.max_seq_len, output_dim=n_features_a, d_model=d_model)
         self.decoder_b = ExprDecoder(seq_len=args.max_seq_len, output_dim=n_features_b, d_model=d_model)
 
-        # self.cls_decoder = ClsDecoder(d_model=d_model, n_cls=n_cls, nlayers=2)
-
-        self.sim = Similarity(temp=0.5)  # TODO: auto set temp
-
         self.discriminator_a = Discriminator(d_model=d_model, seq_len=args.max_seq_len, hidden_dim=args.d_model, reverse_grad=True)
         self.discriminator_b = Discriminator(d_model=d_model, seq_len=args.max_seq_len, hidden_dim=args.d_model, reverse_grad=True)
-        # 梯度反转使生成器优化方向与判别器相反，试图让判别器输出接近均匀分布（即无法区分真实和生成）
 
         self.cross_attn_a = CrossAttentionBlock(dim=d_model, num_heads=2, mlp_ratio=4., qkv_bias=True, drop=dropout,
                                                 attn_drop=dropout, has_mlp=False)
@@ -140,29 +131,24 @@ class Gene_Transformer(nn.Module):
         total_embs = src + values
         total_embs = self.bn(total_embs.permute(0, 2, 1)).permute(0, 2, 1)
 
-        if self.args.grn_la == True:
-            position_ids = torch.arange(total_embs.size(1), device=self.args.device)
-            position_ids = position_ids.unsqueeze(0).expand(total_embs.size(0), -1)
-            pos_embs = self.pos_emb(position_ids).to(total_embs.dtype)
-            
-            level_ids = level.unsqueeze(0).expand(total_embs.size(0), -1)
-            level_embs = self.level_emb(level_ids).to(total_embs.dtype)
+        position_ids = torch.arange(total_embs.size(1), device=self.args.device)
+        position_ids = position_ids.unsqueeze(0).expand(total_embs.size(0), -1)
+        pos_embs = self.pos_emb(position_ids).to(total_embs.dtype)
+        
+        level_ids = level.unsqueeze(0).expand(total_embs.size(0), -1)
+        level_embs = self.level_emb(level_ids).to(total_embs.dtype)
 
-            total_embs = total_embs + pos_embs + level_embs
+        total_embs = total_embs + pos_embs + level_embs
 
         early_output = self.transformer_encoder_early(
             total_embs, src_key_padding_mask=src_key_padding_mask
         )
 
         fused_embds = self.alignment(early_output, values_grn)
-        # fused_embds = early_output
 
         transformer_output = self.transformer_encoder_late(
             fused_embds, src_key_padding_mask=src_key_padding_mask
         )
-
-        basic_embds_a = self.basic_encoder_a(basic_a)
-        basic_embds_b = self.basic_encoder_b(basic_b)
 
         batch_size = transformer_output.size(0) // 2
         cells_embd = self._get_cell_emb_from_layer(transformer_output)
@@ -171,14 +157,6 @@ class Gene_Transformer(nn.Module):
 
         transformer_output_a = transformer_output[:batch_size]
         transformer_output_b = transformer_output[batch_size:]
-
-        concat_a = torch.cat([cells_embd_a.detach(), basic_embds_a], dim=-1)
-        beta_a = self.gate_a(concat_a)
-        cells_embd_a = cells_embd_a + beta_a * basic_embds_a 
-
-        concat_b = torch.cat([cells_embd_b.detach(), basic_embds_b], dim=-1)
-        beta_b = self.gate_b(concat_b)
-        cells_embd_b = cells_embd_b + beta_b * basic_embds_b 
 
         genes_embd_a = self._get_gene_emb_from_layer(transformer_output_a)
         genes_embd_b = self._get_gene_emb_from_layer(transformer_output_b)
@@ -193,10 +171,10 @@ class Gene_Transformer(nn.Module):
         disc_b = self.discriminator_b(concat_embd_b)
 
         embd_a_b = torch.cat([cells_embd_a.unsqueeze(1), genes_embd_b], dim=1)
-        t_cells_embd_b = self.cross_attn_a(embd_a_b).squeeze(1)  # 把a翻译为b
+        t_cells_embd_b = self.cross_attn_a(embd_a_b).squeeze(1) 
 
         embd_b_a = torch.cat([cells_embd_b.unsqueeze(1), genes_embd_a], dim=1)
-        t_cells_embd_a = self.cross_attn_b(embd_b_a).squeeze(1)  # 把b翻译为a
+        t_cells_embd_a = self.cross_attn_b(embd_b_a).squeeze(1)  
 
         output = {}
         recons_aa = self.decoder_a(cell_emb=cells_embd_a, gene_emb=genes_embd_a)
@@ -215,10 +193,9 @@ class Gene_Transformer(nn.Module):
         output["recons_b2b"] = recons_bb
         output["recons_b2a"] = recons_ba
 
-        # output["cls_output"] = self.cls_decoder(cells_embd)  # (batch, n_cls)
 
-        output["basic_embds_a"] = basic_embds_a
-        output["basic_embds_b"] = basic_embds_b
+        output["basic_embds_a"] = cells_embd_a
+        output["basic_embds_b"] = cells_embd_b
         output["cells_embd_a"] = cells_embd_a
         output["cells_embd_b"] = cells_embd_b
         output["cells_t_embd_a"] = t_cells_embd_a
@@ -230,25 +207,15 @@ class Gene_Transformer(nn.Module):
 
     def compute_loss(self, output_dict, celltype_labels, true_value_a, true_value_b, locs_a, locs_b):
         
-        # gamma = 1.0
         cell_embds_a = output_dict["cells_embd_a"]
         cell_embds_b = output_dict["cells_embd_b"]
-        # base_embds_a = output_dict["basic_embds_a"]
-        # base_embds_b = output_dict["basic_embds_b"]
-        # loss_cos_a = F.cosine_similarity(cell_embds_a, base_embds_a, dim=-1).mean()
-        # loss_mse_a = F.mse_loss(cell_embds_a, base_embds_a)
-        # loss_reg_a = (1 - loss_cos_a) + gamma * loss_mse_a
-        # loss_cos_b = F.cosine_similarity(cell_embds_b, base_embds_b, dim=-1).mean()
-        # loss_mse_b = F.mse_loss(cell_embds_b, base_embds_b)
-        # loss_reg_b = (1 - loss_cos_b) + gamma * loss_mse_b
-        # loss_reg = (loss_reg_a + loss_reg_b) / 2
         loss_reg = torch.tensor(0.0, device=self.args.device)
 
         if self.args.spatial == True:
             spatial_regularization_strength = 0.05
             regularization_acceleration = False  
 
-            coords = locs_a  # 假设 locs_a 和 locs_b 相同
+            coords = locs_a 
             coords = coords.to(self.args.device)
 
             def compute_spatial_penalty(emb, coords, regularization_acceleration, edge_subset_sz=1000000):
@@ -281,11 +248,9 @@ class Gene_Transformer(nn.Module):
                 penalty = torch.sum(torch.mul(1.0 - emb_dists, sp_dists)) / n_items
                 return penalty
 
-            # 分别计算每个模态的空间惩罚
             penalty_a = compute_spatial_penalty(cell_embds_a, coords, regularization_acceleration)
             penalty_b = compute_spatial_penalty(cell_embds_b, coords, regularization_acceleration)
 
-            # 总空间损失
             loss_reg_spatial = spatial_regularization_strength * (penalty_a + penalty_b) / 2
         else:
             loss_reg_spatial = torch.tensor(0.0, device=self.args.device)
@@ -299,27 +264,18 @@ class Gene_Transformer(nn.Module):
         loss_disc_b = ce_loss(output_dict["disc_b"], disc_labels)
         loss_disc = (loss_disc_a + loss_disc_b) / 2
 
-        # criterion_cls = nn.CrossEntropyLoss()
-        # loss_cls = criterion_cls(output_dict["cls_output"], celltype_labels)
         loss_cls = torch.tensor(0.0, device=self.args.device)
-
-        # cell_t_embds_a = output_dict["cells_t_embd_a"]
-        # cell_t_embds_b = output_dict["cells_t_embd_b"]
-        # loss_translate_a = F.mse_loss(cell_embds_a, cell_t_embds_a)
-        # loss_translate_b = F.mse_loss(cell_embds_b, cell_t_embds_b)
-        # loss_translate = (loss_translate_a + loss_translate_b) / 2
-        # loss_translate = torch.tensor(0.0, device=self.args.device)
 
         if self.args.modal_a == 'RNA':
 
             if self.args.modal_a_loss == 'nb':
                 size_factor_a = true_value_a.sum(1).unsqueeze(1).to(self.args.device)
-                theta_aa = torch.exp(self.theta_aa)  # 使用 self.theta_aa
+                theta_aa = torch.exp(self.theta_aa) 
                 mu_aa = F.softmax(output_dict["recons_a2a"], dim=1) * size_factor_a
                 px_aa = NegativeBinomial(mu=mu_aa, theta=theta_aa)
                 loss_recons_aa = -px_aa.log_prob(true_value_a).sum(1).mean()
 
-                theta_ba = torch.exp(self.theta_ba)  # 使用 self.theta_ba
+                theta_ba = torch.exp(self.theta_ba)  
                 mu_ba = F.softmax(output_dict["recons_b2a"], dim=1) * size_factor_a
                 px_ba = NegativeBinomial(mu=mu_ba, theta=theta_ba)
                 loss_recons_ba = -px_ba.log_prob(true_value_a).sum(1).mean()
@@ -339,7 +295,6 @@ class Gene_Transformer(nn.Module):
                 probs_ab = F.sigmoid(output_dict["recons_a2b"])
                 px_ab = Bernoulli(probs=probs_ab)
                 loss_recons_ab = -px_ab.log_prob(true_value_b).sum(1).mean()
-                # 不要.sum(1).mean() 。先计算每个细胞的总损失,然后求细胞的平均
 
                 probs_bb = F.sigmoid(output_dict["recons_b2b"])
                 px_bb = Bernoulli(probs=probs_bb)
@@ -371,12 +326,12 @@ class Gene_Transformer(nn.Module):
 
             elif self.args.modal_b_loss == 'nb':
                 size_factor_b = true_value_b.sum(1).unsqueeze(1).to(self.args.device)
-                theta_ab = torch.exp(self.theta_ab)  # 使用 self.theta_ab
+                theta_ab = torch.exp(self.theta_ab)  
                 mu_ab = F.softmax(output_dict["recons_a2b"], dim=1) * size_factor_b
                 px_ab = NegativeBinomial(mu=mu_ab, theta=theta_ab)
                 loss_recons_ab = -px_ab.log_prob(true_value_b).sum(1).mean()
 
-                theta_bb = torch.exp(self.theta_bb)  # 使用 self.theta_bb
+                theta_bb = torch.exp(self.theta_bb) 
                 mu_bb = F.softmax(output_dict["recons_b2b"], dim=1) * size_factor_b
                 px_bb = NegativeBinomial(mu=mu_bb, theta=theta_bb)
                 loss_recons_bb = -px_bb.log_prob(true_value_b).sum(1).mean()
@@ -388,7 +343,6 @@ class Gene_Transformer(nn.Module):
             loss_recons = (self.args.modal_a_loss_lambda*loss_recons_aa + self.args.modal_b_loss_lambda*loss_recons_ab + self.args.modal_b_loss_lambda*loss_recons_bb + self.args.modal_a_loss_lambda*loss_recons_ba) / 4.0
         else:
             loss_recons = (loss_recons_aa + loss_recons_ab + loss_recons_bb + loss_recons_ba) / 4.0
-        # loss_recons = loss_recons_ab
 
         if self.args.spatial == True:
             loss_total = loss_disc + loss_recons + loss_reg_spatial
@@ -412,7 +366,7 @@ class GeneEncoder(nn.Module):
         self.enc_norm = nn.LayerNorm(embedding_dim)
 
     def forward(self, x: Tensor) -> Tensor:
-        x = self.embedding(x)  # (batch, seq_len, embsize)
+        x = self.embedding(x) 
         x = self.enc_norm(x)
         return x
 
@@ -541,22 +495,6 @@ def _get_cell_emb_from_layer(
 
     return cell_emb
 
-
-class BasicEncoder(nn.Module):
-    def __init__(self, in_features: int, out_features: int, dropout: float = 0.1):
-        super().__init__()
-        self.layers = nn.Sequential(
-            nn.Linear(in_features, out_features * 4),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(out_features * 4, out_features * 2),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(out_features * 2, out_features)
-        )
-
-    def forward(self, x: Tensor) -> Tensor:
-        return self.layers(x)
 
 
 class Discriminator(nn.Module):
