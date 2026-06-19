@@ -5,9 +5,6 @@
 ## Overview
 Single-cell multi-omics profiling provides powerful insights into cellular heterogeneity, but it is often costly and technically noisy. ReguSync addresses these challenges by leveraging gene regulatory networks (GRNs) to guide both intra-modal feature modeling and cross-modal semantic synchronization, thereby achieving accurate and biologically informed cross-modal translation.
 
-![ReguSync workflow](Figures/workflow.png)
-
-
 ## Getting Started
 
 ### Key Requirements
