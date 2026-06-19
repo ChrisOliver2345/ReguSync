@@ -620,32 +620,40 @@ class AlignmentModule(nn.Module):
         super(AlignmentModule, self).__init__()
 
         self.proj = nn.Linear(dim_graph, dim_token)
+        self.scale = dim_token ** -0.5
+
         self.ffn = nn.Sequential(
             nn.Linear(dim_token, dim_token * 2),
             nn.ReLU(),
+            nn.Dropout(dropout),
             nn.Linear(dim_token * 2, dim_token)
         )
-        self.norm = nn.LayerNorm(dim_token)
-        self.relu1 = nn.ReLU()
-        self.relu2 = nn.ReLU()
+
+        self.norm1 = nn.LayerNorm(dim_token)
+        self.norm2 = nn.LayerNorm(dim_token)
+        self.dropout = nn.Dropout(dropout)
 
     def forward(self, token_embds, gene_embds):
-
         batch_size, num_tokens, _ = token_embds.size()
-        num_genes, dim_graph = gene_embds.size()
+        num_genes, _ = gene_embds.size()
+
         assert num_tokens == num_genes, "num_tokens must equal num_genes"
 
         gene_embds = self.proj(gene_embds)
         gene_embds = gene_embds.unsqueeze(0).expand(batch_size, -1, -1)
 
-        attn_scores = torch.bmm(token_embds, gene_embds.transpose(1, 2))
+        query = self.norm1(token_embds)
+        key = gene_embds
+        value = gene_embds
+
+        attn_scores = torch.bmm(query, key.transpose(1, 2)) * self.scale
         attn_scores = torch.softmax(attn_scores, dim=-1)
 
-        g_hat = torch.bmm(attn_scores, token_embds)
-        z_g = self.ffn(self.norm(g_hat))
-        # z_g = self.norm(g_hat + self.ffn(g_hat))
-        final_g = z_g + gene_embds
+        grn_context = torch.bmm(attn_scores, value)
 
-        combined = token_embds + final_g
+        fused_embds = token_embds + self.dropout(grn_context)
+        fused_embds = self.norm2(fused_embds)
 
-        return combined
+        fused_embds = fused_embds + self.dropout(self.ffn(fused_embds))
+
+        return fused_embds
