@@ -1,0 +1,1 @@
+This folder stores the resource files required for running the model. The files have been uploaded to Google Drive and can be accessed at: https://drive.google.com/drive/folders/1kt8DroYUTSJZWuzoQ0YRnehYXj7qXkNZ?usp=sharing
