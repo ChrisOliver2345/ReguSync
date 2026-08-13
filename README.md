@@ -32,7 +32,7 @@ torchtext == 0.17.0
 ReguSync requires GPU acceleration for model training and inference. The original experiments were conducted on an NVIDIA RTX 4090. The minimal environment uses the PyTorch CUDA 12.1 runtime; a recent NVIDIA driver with CUDA 12.x support is required.
 
 ### Installation
-We recommend Linux x86_64 for the reproducible CUDA and FlashAttention setup. `environment.yml` contains the minimal runtime environment and pins the versions used by the public pipeline.
+ReguSync is compatible with both Windows and Linux. `environment.yml` contains the minimal runtime environment and pins the versions used by the public pipeline.
 
 ```bash
 git clone https://github.com/your-username/ReguSync.git
