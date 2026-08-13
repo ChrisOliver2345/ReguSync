@@ -503,13 +503,13 @@ class SeqDataset(Dataset):
 
 class SeqDataset_sparse(Dataset):
     def __init__(self, data: Dict[str, torch.Tensor], args):
-        # 分离稠密和稀疏数据
+        # Separate dense metadata from sparse expression matrices.
         self.gene_ids = data["gene_ids"]
         self.values = data["values"]
         self.celltype_labels = data["celltype_labels"]
         self.pair_labels = data["pair_labels"]
-        self.value_basic = data["value_basic"]  # 稀疏矩阵
-        self.value_true = data["value_true"]    # 稀疏矩阵
+        self.value_basic = data["value_basic"]  # Sparse matrix.
+        self.value_true = data["value_true"]    # Sparse matrix.
         self.locs = data["locs"] if args.spatial == True else None
         self.args = args
 
@@ -517,11 +517,11 @@ class SeqDataset_sparse(Dataset):
         return self.gene_ids.shape[0]
 
     # def __getitem__(self, idx):
-    #     # 对于稀疏数据，按需提取单细胞行并转换为稠密 Torch 张量
+    #     # Extract sparse single-cell rows on demand and convert them to dense Torch tensors.
     #     if sp.issparse(self.value_basic):
     #         row_basic = self.value_basic[idx].toarray().ravel()
     #     else:
-    #         row_basic = self.value_basic[idx]  # 如果已稠密，直接切片
+    #         row_basic = self.value_basic[idx]  # Slice directly when already dense.
     #     value_basic_tensor = torch.from_numpy(row_basic).float()
 
     #     if sp.issparse(self.value_true):
@@ -541,11 +541,11 @@ class SeqDataset_sparse(Dataset):
     #     }
 
     def __getitem__(self, idx):
-        # 对于稀疏数据，按需提取单细胞行并转换为稠密 Torch 张量
+        # Extract sparse single-cell rows on demand and convert them to dense Torch tensors.
         if sp.issparse(self.value_basic):
             row_basic = self.value_basic[idx].toarray().ravel()
         else:
-            row_basic = self.value_basic[idx]  # 如果已稠密，直接切片
+            row_basic = self.value_basic[idx]  # Slice directly when already dense.
         value_basic_tensor = torch.from_numpy(row_basic).float()
 
         if sp.issparse(self.value_true):
@@ -587,55 +587,55 @@ class PairedDataset(Dataset):
 
 def get_grn_embeddings(batch_padded, GRN_embds, GRN_genes, vocab, pad_token="<pad>", cls_token="<cls>", dtype=torch.float16):
     """
-    将 GRN_embds 扩展为 (cell_num, gene_num, embds) 并与分词后的基因序列对齐。
+    Expand GRN_embds to (cell_num, gene_num, embds) and align it with tokenized gene sequences.
 
     Args:
-        batch_padded (Dict[str, torch.Tensor]): tokenize_and_pad_batch 的输出，包含 'genes' 和 'values'。
-        GRN_embds (np.ndarray): 形状为 (gene_num, embds) 的基因图嵌入。
-        GRN_genes (np.ndarray): 形状为 (gene_num,) 的基因名（字符串），与 GRN_embds 对应。
-        vocab (Vocab): 词汇表，包含基因 ID 和特殊标记的映射。
-        pad_token (str): 填充标记，默认为 "<pad>"。
-        cls_token (str): 分类标记，默认为 "<cls>"，可以为 None。
-        dtype (torch.dtype): 输出张量的数据类型，默认为 torch.float16。
+        batch_padded (Dict[str, torch.Tensor]): Output from tokenize_and_pad_batch containing 'genes' and 'values'.
+        GRN_embds (np.ndarray): Gene graph embeddings with shape (gene_num, embds).
+        GRN_genes (np.ndarray): Gene names with shape (gene_num,) corresponding to GRN_embds.
+        vocab (Vocab): Vocabulary mapping gene IDs and special tokens.
+        pad_token (str): Padding token. Defaults to "<pad>".
+        cls_token (str): Classification token. Defaults to "<cls>" and may be None.
+        dtype (torch.dtype): Output tensor data type. Defaults to torch.float16.
 
     Returns:
-        torch.Tensor: 形状为 (cell_num, gene_num, embds) 的张量，与 batch_padded['genes'] 对齐。
+        torch.Tensor: Tensor shaped (cell_num, gene_num, embds), aligned with batch_padded['genes'].
     """
-    # 获取参数
+    # Read dimensions from the inputs.
     cell_num, max_len = batch_padded['genes'].shape
     emb_dim = GRN_embds.shape[1]
 
-    # 将 GRN_embds 转换为 torch.Tensor
+    # Convert GRN_embds to a Torch tensor.
     GRN_embds = torch.from_numpy(GRN_embds).to(dtype=dtype, device=batch_padded['genes'].device)
 
-    # 初始化输出张量
+    # Initialize the output tensor.
     aligned_embds = torch.zeros(cell_num, max_len, emb_dim, dtype=dtype, device=batch_padded['genes'].device)
 
-    # 获取特殊标记的 ID
+    # Get special-token IDs.
     pad_id = vocab[pad_token]
     cls_id = vocab[cls_token] if cls_token is not None else None
 
-    # 创建基因名到 GRN_embds 索引的映射
-    gene_to_idx = {str(gene): i for i, gene in enumerate(GRN_genes)}  # 确保基因名为字符串
+    # Map gene names to GRN_embds indices.
+    gene_to_idx = {str(gene): i for i, gene in enumerate(GRN_genes)}  # Normalize gene names to strings.
     vocab_to_grn_idx = torch.full((len(vocab),), -1, dtype=torch.long, device=batch_padded['genes'].device)
 
-    # 获取词汇表字符串到索引的映射
+    # Get the vocabulary string-to-index mapping.
     vocab_stoi = vocab.get_stoi()
 
-    # 构建 vocab 中基因 ID 到 GRN_embds 索引的映射
+    # Map vocabulary gene IDs to GRN_embds indices.
     matched_genes = 0
     for gene, idx in vocab_stoi.items():
-        gene_str = str(gene)  # 确保基因名为字符串
+        gene_str = str(gene)  # Normalize the gene name to a string.
         if gene_str in gene_to_idx:
             vocab_to_grn_idx[idx] = gene_to_idx[gene_str]
             matched_genes += 1
 
-    # 创建掩码
+    # Create masks for special tokens and regular genes.
     pad_mask = (batch_padded['genes'] == pad_id)
     cls_mask = (batch_padded['genes'] == cls_id) if cls_id is not None else torch.zeros_like(pad_mask, dtype=torch.bool)
     gene_mask = ~(pad_mask | cls_mask)
 
-    # 处理普通基因的嵌入
+    # Populate embeddings for regular genes.
     if gene_mask.any():
         gene_ids = batch_padded['genes'][gene_mask]
         grn_indices = vocab_to_grn_idx[gene_ids]
@@ -645,76 +645,76 @@ def get_grn_embeddings(batch_padded, GRN_embds, GRN_genes, vocab, pad_token="<pa
             valid_grn_indices = grn_indices[valid_mask]
             aligned_embds[gene_mask] = GRN_embds[valid_grn_indices]
         else:
-            print("警告：没有找到任何有效的基因嵌入，所有基因 ID 可能未在 GRN_embds 中")
+            print("Warning: No valid gene embeddings were found; the gene IDs may be absent from GRN_embds.")
 
-        # 打印无效基因的警告
+        # Report genes without matching embeddings.
         if (~valid_mask).any():
             invalid_gene_ids = gene_ids[~valid_mask]
             invalid_genes = [next((g for g, idx in vocab_stoi.items() if idx == gid.item()), None)
                              for gid in invalid_gene_ids]
             for gid, gene in zip(invalid_gene_ids, invalid_genes):
-                print(f"警告：基因名 {gene} (ID: {gid.item()}) 未在 GRN_embds 中找到")
+                print(f"Warning: Gene {gene} (ID: {gid.item()}) was not found in GRN_embds.")
 
     return aligned_embds
 
 
 def get_grn_embeddings_2(batch_padded, GRN_embds, GRN_genes, vocab, pad_token="<pad>", cls_token="<cls>", dtype=torch.float16):
     """
-    将 GRN_embds 扩展为 (cell_num, gene_num, embds) 并与分词后的基因序列对齐。
+    Expand GRN_embds to (cell_num, gene_num, embds) and align it with tokenized gene sequences.
 
     Args:
-        batch_padded (Dict[str, torch.Tensor]): tokenize_and_pad_batch 的输出，包含 'genes' 和 'values'。
-        GRN_embds (np.ndarray): 形状为 (gene_num, embds) 的基因图嵌入。
-        GRN_genes (np.ndarray): 形状为 (gene_num,) 的基因名（字符串），与 GRN_embds 对应。
-        vocab (Vocab): 词汇表，包含基因 ID 和特殊标记的映射。
-        pad_token (str): 填充标记，默认为 "<pad>"。
-        cls_token (str): 分类标记，默认为 "<cls>"，可以为 None。
-        dtype (torch.dtype): 输出张量的数据类型，默认为 torch.float16。
+        batch_padded (Dict[str, torch.Tensor]): Output from tokenize_and_pad_batch containing 'genes' and 'values'.
+        GRN_embds (np.ndarray): Gene graph embeddings with shape (gene_num, embds).
+        GRN_genes (np.ndarray): Gene names with shape (gene_num,) corresponding to GRN_embds.
+        vocab (Vocab): Vocabulary mapping gene IDs and special tokens.
+        pad_token (str): Padding token. Defaults to "<pad>".
+        cls_token (str): Classification token. Defaults to "<cls>" and may be None.
+        dtype (torch.dtype): Output tensor data type. Defaults to torch.float16.
 
     Returns:
-        torch.Tensor: 形状为 (cell_num, gene_num, embds) 的张量，与 batch_padded['genes'] 对齐。
+        torch.Tensor: Tensor shaped (cell_num, gene_num, embds), aligned with batch_padded['genes'].
     """
-    # 获取参数
+    # Read dimensions from the inputs.
     cell_num, max_len = batch_padded['genes'].shape
     emb_dim = GRN_embds.shape[1]
 
-    # 将 GRN_embds 转换为 torch.Tensor
+    # Convert GRN_embds to a Torch tensor.
     GRN_embds = torch.from_numpy(GRN_embds).to(dtype=dtype, device=batch_padded['genes'].device)
 
-    # 初始化输出张量
+    # Initialize the output tensor.
     # aligned_embds = torch.zeros(cell_num, max_len, emb_dim, dtype=dtype, device=batch_padded['genes'].device)
 
-    # 获取特殊标记的 ID
+    # Get special-token IDs.
     pad_id = vocab[pad_token]
     cls_id = vocab[cls_token] if cls_token is not None else None
 
-    # 创建基因名到 GRN_embds 索引的映射
-    gene_to_idx = {str(gene): i for i, gene in enumerate(GRN_genes)}  # 确保基因名为字符串
+    # Map gene names to GRN_embds indices.
+    gene_to_idx = {str(gene): i for i, gene in enumerate(GRN_genes)}  # Normalize gene names to strings.
     vocab_to_grn_idx = torch.full((len(vocab),), -1, dtype=torch.long, device=batch_padded['genes'].device)
 
-    # 获取词汇表字符串到索引的映射
+    # Get the vocabulary string-to-index mapping.
     vocab_stoi = vocab.get_stoi()
 
-    # 构建 vocab 中基因 ID 到 GRN_embds 索引的映射
+    # Map vocabulary gene IDs to GRN_embds indices.
     matched_genes = 0
     for gene, idx in vocab_stoi.items():
-        gene_str = str(gene)  # 确保基因名为字符串
+        gene_str = str(gene)  # Normalize the gene name to a string.
         if gene_str in gene_to_idx:
             vocab_to_grn_idx[idx] = gene_to_idx[gene_str]
             matched_genes += 1
 
-    # 由于所有细胞的基因序列相同，只取第一个细胞的基因序列进行计算
+    # All cells share one gene sequence, so compute using only the first cell.
     unique_genes = batch_padded['genes'][0]  # (max_len,)
 
-    # 创建掩码（基于唯一序列）
+    # Create masks from the shared sequence.
     pad_mask_single = (unique_genes == pad_id)
     cls_mask_single = (unique_genes == cls_id) if cls_id is not None else torch.zeros_like(pad_mask_single, dtype=torch.bool)
     gene_mask_single = ~(pad_mask_single | cls_mask_single)
 
-    # 初始化单个细胞的嵌入张量
+    # Initialize the single-cell embedding tensor.
     aligned_embds_single = torch.zeros(1, max_len, emb_dim, dtype=dtype, device=batch_padded['genes'].device)
 
-    # 处理普通基因的嵌入（只计算一次）
+    # Populate regular-gene embeddings once.
     if gene_mask_single.any():
         gene_ids = unique_genes[gene_mask_single]
         grn_indices = vocab_to_grn_idx[gene_ids]
@@ -724,17 +724,17 @@ def get_grn_embeddings_2(batch_padded, GRN_embds, GRN_genes, vocab, pad_token="<
             valid_grn_indices = grn_indices[valid_mask]
             aligned_embds_single[0, gene_mask_single] = GRN_embds[valid_grn_indices]
         else:
-            print("警告：没有找到任何有效的基因嵌入，所有基因 ID 可能未在 GRN_embds 中")
+            print("Warning: No valid gene embeddings were found; the gene IDs may be absent from GRN_embds.")
 
-        # 打印无效基因的警告
+        # Report genes without matching embeddings.
         if (~valid_mask).any():
             invalid_gene_ids = gene_ids[~valid_mask]
             invalid_genes = [next((g for g, idx in vocab_stoi.items() if idx == gid.item()), None)
                              for gid in invalid_gene_ids]
             for gid, gene in zip(invalid_gene_ids, invalid_genes):
-                print(f"警告：基因名 {gene} (ID: {gid.item()}) 未在 GRN_embds 中找到")
+                print(f"Warning: Gene {gene} (ID: {gid.item()}) was not found in GRN_embds.")
 
-    # 将单个细胞的嵌入广播到所有细胞
+    # Broadcast the single-cell embeddings to all cells.
     # aligned_embds = aligned_embds_single.repeat(cell_num, 1, 1)
 
     return aligned_embds_single

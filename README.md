@@ -5,19 +5,25 @@
 
 Single-cell multi-omics profiling provides powerful insights into cellular heterogeneity, but it is often costly and technically noisy. ReguSync addresses these challenges by leveraging gene regulatory networks to guide both intra-modal feature modeling and cross-modal semantic synchronization, thereby achieving accurate and biologically informed cross-modal translation.
 
+## Workflow
+
+![ReguSync workflow](Figures/workflow.png)
+
 ## Getting Started
 
 ### Key Requirements
-+ python >= 3.9.19
-+ pytorch >= 2.2.0
-+ numpy >= 1.24.3
-+ scipy >= 1.13.1
-+ pandas >= 2.3.3
-+ scikit-learn >= 1.4.0
-+ flash-attn >= 2.5.2
-+ scanpy >= 1.9.8
-+ episcanpy >= 0.4.0
-+ torchtext == 0.17.0
+```text
+python >= 3.9.19
+pytorch >= 2.2.0
+numpy >= 1.24.3
+scipy >= 1.13.1
+pandas >= 2.3.3
+scikit-learn >= 1.4.0
+flash-attn >= 2.5.2
+scanpy >= 1.9.8
+episcanpy >= 0.4.0
+torchtext == 0.17.0
+```
 
 ### Hardware Note
 ReguSync requires GPU acceleration for model training and inference. The original experiments were conducted on an NVIDIA RTX 4090 GPU with CUDA 12.5.
@@ -66,6 +72,28 @@ python run.py
 ```
 
 The output files, logs, and model-generated results will be saved under the `Results/` directory.
+
+## Tutorial
+
+The ReguSync tutorial and extended documentation are available on [Read the Docs](https://regusync-tutorial.readthedocs.io/en/latest/). The tutorial source is hosted in the [ReguSync Tutorial repository](https://github.com/ChrisOliver2345/ReguSync-tutorial). The tutorial will continue to expand with new examples and workflows.
+
+## Project Structure
+
+```text
+ReguSync/
+├── Dataset/          # Input datasets
+├── Resources/        # Reference gene score files
+├── Gene_order/       # GRN-based gene ordering files
+├── Cache/            # Precomputed intermediate data
+├── Results/          # Model outputs and logs
+├── Figures/          # Documentation figures
+├── regusync_main.py  # Main ReguSync pipeline
+├── run.py            # Example entry point
+├── model.py          # Model architecture
+├── train.py          # Training and evaluation
+├── preprocess.py     # Data preprocessing
+└── environment.yml   # Conda environment
+```
 
 
 ## Resources

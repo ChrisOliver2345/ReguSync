@@ -508,7 +508,7 @@ class Discriminator(nn.Module):
     ):
         super().__init__()
         self.model = nn.Sequential(
-            nn.Linear(d_model * seq_len, hidden_dim),  # 展平输入
+            nn.Linear(d_model * seq_len, hidden_dim),  # Flatten the input.
             nn.LeakyReLU(),
             nn.Linear(hidden_dim, hidden_dim // 2),
             nn.LeakyReLU(),
@@ -523,7 +523,7 @@ class Discriminator(nn.Module):
             x = grad_reverse(x, lambd=1.0)
 
         batch_size = x.size(0)
-        x = x.reshape(batch_size, -1)  # 展平为 (batch_size, (seq_len-1)*d_model)
+        x = x.reshape(batch_size, -1)  # Flatten to (batch_size, (seq_len - 1) * d_model).
         x = self.model(x)
 
         return self.out_layer(x)
@@ -586,8 +586,8 @@ class CrossAttentionBlock(nn.Module):
 class Mlp(nn.Module):
     def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, drop=0.):
         super().__init__()
-        out_features = out_features or in_features  # 如果未指定输出维度，默认等于输入维度
-        hidden_features = hidden_features or in_features  # 如果未指定隐藏维度，默认等于输入维度
+        out_features = out_features or in_features  # Default output size to the input size.
+        hidden_features = hidden_features or in_features  # Default hidden size to the input size.
         self.fc1 = nn.Linear(in_features, hidden_features)
         self.act = act_layer()
         self.fc2 = nn.Linear(hidden_features, out_features)

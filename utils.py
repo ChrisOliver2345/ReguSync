@@ -196,17 +196,17 @@ class Binning_CITE_seq:
                 )
             n_bins = self.binning  # NOTE: the first bin is always a spectial for zero
             
-            # 获取 adata 的特征名
+            # Get feature names from adata.
             feature_names = adata.var_names if key_to_process is None else adata.obsm[key_to_process].columns
             feature_names = np.array(feature_names)
-            # 找到共同特征
+            # Find features shared with the feature union.
             common_features = np.intersect1d(feature_names, feature_union)
             print("Number of common features: " + str(len(common_features)))
-            # 创建特征映射，从 feature_names 到列索引
+            # Map feature names to column indices.
             feature_map = {f: i for i, f in enumerate(feature_names)}
-            # 映射共同特征到 layer_data 的列索引
+            # Map shared features to their column indices in layer_data.
             common_indices = [feature_map[f] for f in common_features if f in feature_map]
-            # 映射 feature_union 的特征到输出数组的索引
+            # Map feature_union entries to output array indices.
             feature_union_map = {f: i for i, f in enumerate(feature_union)}
             
             binned_rows = []
@@ -229,53 +229,53 @@ class Binning_CITE_seq:
                         "this is expected. You can use the `filter_cell_by_counts` "
                         "arg to filter out all zero rows."
                     )
-                    # 输出全零数组，长度为 feature_union 的特征数
+                    # Return an all-zero row with one entry per union feature.
                     binned_rows.append(np.zeros(n_features, dtype=np.int64))
                     bin_edges.append(np.zeros(n_bins - 1))
                     continue
 
-                # --- 修改：仅对共同特征分箱 ---
+                # Bin only the shared features.
                 non_zero_ids = row[common_indices].nonzero()[0]
                 non_zero_row = row[common_indices][non_zero_ids]
                 if len(non_zero_row) == 0:
-                    # 共同特征全为零，输出全零数组
+                    # Return an all-zero row when every shared feature is zero.
                     binned_rows.append(np.zeros(n_features, dtype=np.int64))
                     bin_edges.append(np.zeros(n_bins - 1))
                     continue
 
-                # 计算分箱
+                # Compute the bin boundaries and assignments.
                 bins = np.quantile(non_zero_row, np.linspace(0, 1, n_bins - 1))
                 non_zero_digits = _digitize(non_zero_row, bins)
                 assert non_zero_digits.min() >= 1
                 assert non_zero_digits.max() <= n_bins - 1
 
-                # --- 修改：将分箱结果映射到 feature_union 顺序 ---
-                binned_row = np.zeros(n_features, dtype=np.int64)  # 初始化为 0，自动处理缺失特征
-                # 将分箱结果填入 feature_union 对应的位置
+                # Map binned values to feature_union order.
+                binned_row = np.zeros(n_features, dtype=np.int64)  # Missing features remain zero.
+                # Fill the corresponding feature_union positions.
                 for j, idx in enumerate(non_zero_ids):
                     feature = common_features[idx]
                     binned_row[feature_union_map[feature]] = non_zero_digits[j]
                 binned_rows.append(binned_row)
                 bin_edges.append(np.concatenate([[0], bins]))
-                # --- 修改结束 ---
+                # End feature mapping.
 
             # shapes = [np.array(edge).shape for edge in bin_edges]
             # shape_counts = Counter(shapes)
             # print("All unique shapes and counts:", shape_counts)
             
 
-            # 将分箱结果和边界转换为 numpy 数组
-            binned_data = np.stack(binned_rows)  # 形状 (n_cells, len(feature_union))
-            bin_edges_data = np.stack(bin_edges)  # 形状 (n_cells, n_bins - 1)
-            # 创建新的 AnnData 对象
+            # Convert binned values and boundaries to NumPy arrays.
+            binned_data = np.stack(binned_rows)  # Shape: (n_cells, len(feature_union)).
+            bin_edges_data = np.stack(bin_edges)  # Shape: (n_cells, n_bins - 1).
+            # Create a new AnnData object.
             new_adata = anndata.AnnData(
                 X=csr_matrix((n_cells, n_features), dtype=np.int8), 
                 obs=adata.obs.copy(),  
                 var=pd.DataFrame(index=feature_union)  
             )
-            # 存储分箱结果到 layers
+            # Store binned values in layers.
             new_adata.layers[self.result_binned_key] = binned_data
-            # 存储分箱边界到 obsm
+            # Store bin boundaries in obsm.
             new_adata.obsm["bin_edges"] = bin_edges_data
 
             return new_adata
@@ -365,17 +365,17 @@ def TFIDF_sklearn(count_mat):
     tfidf_mat
         Sparse matrix after TF-IDF transformation, shape (n_cells, n_peaks).
     """
-    # 确保输入是稀疏矩阵
+    # Ensure the input is a sparse matrix.
     if not scipy.sparse.issparse(count_mat):
         count_mat = scipy.sparse.csr_matrix(count_mat)
 
-    # 初始化 TfidfTransformer
-    # norm='l1' 对应原函数的 TF 归一化 (count_mat / rowSums)
-    # smooth_idf=True 对应 log((n_cells + 1) / (doc_freq + 1)) + 1
-    # sublinear_tf=False 保持线性 TF
+    # Initialize TfidfTransformer.
+    # norm='l1' matches the original TF normalization (count_mat / rowSums).
+    # smooth_idf=True corresponds to log((n_cells + 1) / (doc_freq + 1)) + 1.
+    # sublinear_tf=False keeps TF linear.
     transformer = TfidfTransformer(norm='l1', use_idf=True, smooth_idf=True, sublinear_tf=False)
 
-    # 应用 TF-IDF 变换
+    # Apply the TF-IDF transformation.
     tfidf_mat = transformer.fit_transform(count_mat)
 
     return tfidf_mat, 0, 0

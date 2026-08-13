@@ -5,18 +5,18 @@ import torch
 from typing import Dict, Iterable, List, Optional, Tuple, Union
 
 def tokenize_and_pad_batch(
-    data: np.ndarray,  # 基因表达矩阵
-    gene_ids: np.ndarray,  # 基因ID数组,对应于 data 的特征（基因）
-    max_len: int,  # 序列的最大长度，用于填充或截断
-    vocab: Vocab,  # 词汇表, 用于将基因ID和特殊标记（如 <cls>、<pad>）映射为整数索引
-    pad_token: str,  # 填充标记
-    pad_value: int,  # 填充值
-    append_cls: bool = True,  # 是否在序列开头添加分类标记 <cls>
-    include_zero_gene: bool = False,  # 是否保留表达值为 0 的基因
-    cls_token: str = "<cls>",  # 分类标记
-    return_pt: bool = True,  # 是否返回 PyTorch 张量
-    mod_type: np.ndarray = None,  # 可选的模态类型数组
-    vocab_mod: Vocab = None,  # 可选的模态词汇表，用于将模态类型映射为整数索引
+    data: np.ndarray,  # Gene expression matrix.
+    gene_ids: np.ndarray,  # Gene ID array corresponding to the features in data.
+    max_len: int,  # Maximum sequence length used for padding or truncation.
+    vocab: Vocab,  # Maps gene IDs and special tokens such as <cls> and <pad> to indices.
+    pad_token: str,  # Padding token.
+    pad_value: int,  # Padding value.
+    append_cls: bool = True,  # Whether to append the <cls> token to the sequence.
+    include_zero_gene: bool = False,  # Whether to retain genes with zero expression.
+    cls_token: str = "<cls>",  # Classification token.
+    return_pt: bool = True,  # Whether to return PyTorch tensors.
+    mod_type: np.ndarray = None,  # Optional modality type array.
+    vocab_mod: Vocab = None,  # Optional vocabulary that maps modality types to indices.
 ) -> Dict[str, torch.Tensor]:
     """
     Tokenize and pad a batch of data. Returns a list of tuple (gene_id, count).
@@ -25,7 +25,7 @@ def tokenize_and_pad_batch(
     if mod_type is not None:
         cls_id_mod_type = vocab_mod[cls_token]
 
-    # 将基因表达数据分词，生成每个细胞的基因-表达值对序列，仅保留非零表达的基因（或可选保留所有基因），并可添加 <cls> 标记
+    # Tokenize each cell into gene-expression pairs, optionally retaining zeros and appending <cls>.
     tokenized_data = tokenize_batch(
         data,
         gene_ids,
@@ -37,7 +37,7 @@ def tokenize_and_pad_batch(
         cls_id_mod_type=cls_id_mod_type if mod_type is not None else None,
     )
 
-    # 将分词后的序列填充到固定长度（max_len），以确保批次中所有序列长度一致，适合模型输入
+    # Pad tokenized sequences to max_len so all model inputs in the batch have equal length.
     batch_padded = pad_batch(
         tokenized_data,
         max_len,
@@ -102,9 +102,9 @@ def tokenize_batch(
                 mod_types = mod_type[idx]
         if append_cls:
             # genes = np.insert(genes, 0, cls_id)
-            genes = np.append(genes, cls_id)   # 插入CLS token 到末尾
+            genes = np.append(genes, cls_id)   # Append the CLS token.
             # values = np.insert(values, 0, 0)
-            values = np.append(values, 0)  # 插入value 0到末尾
+            values = np.append(values, 0)  # Append a zero value for the CLS token.
             if mod_type is not None:
                 mod_types = np.insert(mod_types, 0, cls_id_mod_type)
         if return_pt:
@@ -140,8 +140,8 @@ def pad_batch(
         Dict[str, torch.Tensor]: A dictionary of gene_id and count.
     """
     max_ori_len = max(len(batch[i][0]) for i in range(len(batch)))
-    print('原始序列长度: ', max_ori_len)
-    print('参数序列长度: ', max_len)
+    print('Original sequence length: ', max_ori_len)
+    print('Configured sequence length: ', max_len)
     max_len = min(max_ori_len, max_len)
 
     pad_id = vocab[pad_token]
@@ -160,18 +160,18 @@ def pad_batch(
                 # idx = np.random.choice(len(gene_ids), max_len, replace=False)
                 # idx = np.sort(idx)
 
-                idx = np.arange(max_len)  # 表示生成从 0 到 max_len - 1 的整数序列
+                idx = np.arange(max_len)  # Generate indices from 0 to max_len - 1.
 
             else:
                 # idx = np.random.choice(len(gene_ids) - 1, max_len - 1, replace=False)
                 # idx = np.sort(idx)
-                # 从 0 到 len(gene_ids) - 2 的索引中随机选择 max_len - 1 个不重复的索引
+                # Randomly select max_len - 1 unique indices from 0 to len(gene_ids) - 2.
 
-                idx = np.arange(max_len - 1)  # 表示生成从 0 到 max_len - 2 的整数序列
+                idx = np.arange(max_len - 1)  # Generate indices from 0 to max_len - 2.
 
-                # idx = idx + 1  # 将所有索引加 1，为索引 0（<cls> 标记）腾出空间
-                # idx = np.insert(idx, 0, 0)  # 在索引数组的开头插入索引 0，确保 <cls> 标记（位于 gene_ids[0]）被包含
-                idx = np.append(idx, len(gene_ids) - 1)  # 将 len(gene_ids) - 1（即 <cls> 标记的索引）追加到 idx 数组的末尾
+                # idx = idx + 1  # Shift indices by one to reserve index 0 for the <cls> token.
+                # idx = np.insert(idx, 0, 0)  # Include the <cls> token stored at gene_ids[0].
+                idx = np.append(idx, len(gene_ids) - 1)  # Append the <cls> token index.
             gene_ids = gene_ids[idx]
             values = values[idx]
             if mod_types is not None:

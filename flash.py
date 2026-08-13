@@ -61,8 +61,8 @@ class FlashTransformerEncoderLayer(nn.Module):
             embed_dim=d_model,
             num_heads=nhead,
             # batch_first=batch_first,
-            dropout=dropout,  # 注意：这里的 dropout 对应 attention_dropout
-            use_flash_attn=True,  # 启用 flash attention
+            dropout=dropout,  # This dropout value controls attention dropout.
+            use_flash_attn=True,  # Enable FlashAttention.
             causal=causal,
             **factory_kwargs,
         )

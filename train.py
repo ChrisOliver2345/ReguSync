@@ -41,7 +41,7 @@ def train(model: nn.Module, loader: DataLoader, args, vocab, pad_token, optimize
         src_key_padding_mask = gene_ids.eq(vocab[pad_token])
 
         with torch.cuda.amp.autocast(enabled=args.enable_amp):
-            # 训练模型
+            # Train the model.
             output_dict = model(
                 src=gene_ids,
                 values=values,
@@ -167,7 +167,7 @@ def evaluate(model: nn.Module, loader: DataLoader, args, vocab, pad_token, epoch
 
             with torch.cuda.amp.autocast(enabled=args.enable_amp):
 
-                # 测试模型
+                # Evaluate the model.
                 output_dict = model(
                     src=gene_ids,
                     values=values,
