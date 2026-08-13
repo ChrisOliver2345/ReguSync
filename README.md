@@ -35,7 +35,7 @@ ReguSync requires GPU acceleration for model training and inference. The origina
 ReguSync is compatible with both Windows and Linux. `environment.yml` contains the minimal runtime environment and pins the versions used by the public pipeline.
 
 ```bash
-git clone https://github.com/your-username/ReguSync.git
+git clone https://github.com/ChrisOliver2345/ReguSync.git
 cd ReguSync
 
 conda env create -f environment.yml
