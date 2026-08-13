@@ -2,10 +2,8 @@ import os
 os.environ["OMP_NUM_THREADS"] = "8"
 import torch
 import argparse
-from tqdm import tqdm
 from torch import optim
 from datasets import load_data, preprocess_data, prepare_data, prepare_dataloader, get_grn_embeddings, get_grn_embeddings_2
-from sklearn.model_selection import KFold, StratifiedKFold
 from utils import set_seed, sc_logger
 from torchtext.vocab import Vocab
 from torchtext._torchtext import (Vocab as VocabPybind,)
