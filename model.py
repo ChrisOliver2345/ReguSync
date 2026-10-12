@@ -78,7 +78,7 @@ class ReguSync_Transformer(nn.Module):
         self.gate_a = GateMLP(d_model=d_model)
         self.gate_b = GateMLP(d_model=d_model)
 
-        self.alignment = AlignmentModule(dim_token=d_model, dim_graph=args.d_graph, dropout=dropout)
+        self.semantic_sync = SemanticSynchronizationModule(dim_token=d_model, dim_graph=args.d_graph, dropout=dropout)
 
         self.cell_mlp = nn.Sequential(
             nn.Linear(args.max_seq_len, args.d_model * 4),
@@ -143,10 +143,10 @@ class ReguSync_Transformer(nn.Module):
             total_embs, src_key_padding_mask=src_key_padding_mask
         )
 
-        fused_embds = self.alignment(early_output, values_grn)
+        synchronized_embds = self.semantic_sync(early_output, values_grn)
 
         transformer_output = self.transformer_encoder_late(
-            fused_embds, src_key_padding_mask=src_key_padding_mask
+            synchronized_embds, src_key_padding_mask=src_key_padding_mask
         )
 
         batch_size = transformer_output.size(0) // 2
@@ -614,11 +614,15 @@ class GateMLP(nn.Module):
         return torch.sigmoid(self.mlp(concat_emb))
 
 
-class AlignmentModule(nn.Module):
-    def __init__(self, dim_token, dim_graph, dropout=0.1):
-        super(AlignmentModule, self).__init__()
+class SemanticSynchronizationModule(nn.Module):
+    """Synchronize token features with shared GRN anchors using cross-attention."""
 
-        self.proj = nn.Linear(dim_graph, dim_token)
+    def __init__(self, dim_token, dim_graph, dropout=0.1):
+        super().__init__()
+
+        self.q_proj = nn.Linear(dim_token, dim_token, bias=False)
+        self.k_proj = nn.Linear(dim_graph, dim_token, bias=False)
+        self.v_proj = nn.Linear(dim_graph, dim_token, bias=False)
         self.scale = dim_token ** -0.5
 
         self.ffn = nn.Sequential(
@@ -628,31 +632,23 @@ class AlignmentModule(nn.Module):
             nn.Linear(dim_token * 2, dim_token)
         )
 
-        self.norm1 = nn.LayerNorm(dim_token)
-        self.norm2 = nn.LayerNorm(dim_token)
+        self.norm = nn.LayerNorm(dim_token)
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, token_embds, gene_embds):
-        batch_size, num_tokens, _ = token_embds.size()
-        num_genes, _ = gene_embds.size()
+        """Map tokens (B, N, D) and shared GRN anchors (M, G) to (B, N, D)."""
+        batch_size = token_embds.size(0)
 
-        assert num_tokens == num_genes, "num_tokens must equal num_genes"
-
-        gene_embds = self.proj(gene_embds)
-        gene_embds = gene_embds.unsqueeze(0).expand(batch_size, -1, -1)
-
-        query = self.norm1(token_embds)
-        key = gene_embds
-        value = gene_embds
+        query = self.q_proj(token_embds)
+        key = self.k_proj(gene_embds).unsqueeze(0).expand(batch_size, -1, -1)
+        value = self.v_proj(gene_embds).unsqueeze(0).expand(batch_size, -1, -1)
 
         attn_scores = torch.bmm(query, key.transpose(1, 2)) * self.scale
         attn_scores = torch.softmax(attn_scores, dim=-1)
 
-        grn_context = torch.bmm(attn_scores, value)
+        h_sync = torch.bmm(attn_scores, value)
 
-        fused_embds = token_embds + self.dropout(grn_context)
-        fused_embds = self.norm2(fused_embds)
+        synchronized_embds = token_embds + self.dropout(h_sync)
+        synchronized_embds = synchronized_embds + self.dropout(self.norm(self.ffn(synchronized_embds)))
 
-        fused_embds = fused_embds + self.dropout(self.ffn(fused_embds))
-
-        return fused_embds
+        return synchronized_embds
