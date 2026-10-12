@@ -9,6 +9,12 @@ Single-cell multi-omics profiling provides powerful insights into cellular heter
 
 ![ReguSync workflow](Figures/Figure_workflow_v2.png)
 
+## Notes
+
+1. **2026-10-13: Figure Version Update**
+
+   The workflow diagram in this repository has been updated to reflect the semantic synchronization module described in the Methods and used in the reported experiments. Figure 1 in the submitted manuscript contains an earlier schematic; the updated diagram is available in this repository.
+
 ## Getting Started
 
 ### Key Requirements
@@ -165,12 +171,6 @@ ReguSync/
 ├── README.md
 └── ...
 ```
-
-## Notes
-
-1. **2026-10-13: Figure Version Update**
-
-   The workflow diagram in this repository has been updated to reflect the semantic synchronization module described in the Methods and used in the reported experiments. Figure 1 in the submitted manuscript contains an earlier schematic; the updated diagram is available in this repository.
 
 ## License
 This project is released under the MIT License.
