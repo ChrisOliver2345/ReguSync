@@ -7,7 +7,7 @@ Single-cell multi-omics profiling provides powerful insights into cellular heter
 
 ## Workflow
 
-![ReguSync workflow](Figures/workflow.png)
+![ReguSync workflow](Figures/Figure_workflow_v2.png)
 
 ## Getting Started
 
@@ -42,6 +42,8 @@ conda env create -f environment.yml
 conda activate regusync
 ```
 
+Estimated installation time is 10-20 minutes, depending on network speed and the existing environment.
+
 ## Quick Start
 
 ReguSync can be run through the provided `run.py` script. The script calls `run_ReguSync()` and specifies the input paired multi-omics data, model settings, and training configuration.
@@ -75,6 +77,8 @@ python run.py
 ```
 
 The output files, logs, and model-generated results will be saved under the `Results/` directory.
+
+The demo is expected to take approximately 15 minutes, depending on the hardware and runtime configuration.
 
 ## Tutorial
 
